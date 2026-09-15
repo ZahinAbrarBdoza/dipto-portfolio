@@ -25,7 +25,7 @@ export const profile = {
     label: "Open to data & analytics roles",
     responseTime: "Replies within 24 hours",
   },
-  siteUrl: "https://example.com",
+  siteUrl: "https://dipto-portfolio-theta.vercel.app",
   /**
    * The positioning statement in the hero. `italic` renders in serif italic.
    * Keep each line under ~19 characters — beyond that it wraps at the largest
