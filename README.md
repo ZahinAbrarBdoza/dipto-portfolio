@@ -92,24 +92,31 @@ plate frame around it.
 
 ## Contact form
 
-`POST /api/contact` validates server-side, drops honeypot submissions silently
-and rate-limits per IP (4/minute, in-memory).
-
-Delivery goes through [Web3Forms](https://web3forms.com), which needs no
-verified domain — get a free access key with your inbox address, then set:
+The form submits straight from the browser to [Web3Forms](https://web3forms.com),
+which needs no verified domain and no server. Get a free access key with your
+inbox address, then set:
 
 ```
-WEB3FORMS_ACCESS_KEY=your-key-here
+NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY=your-key-here
 ```
 
 in `.env.local` locally, and in your host's environment variables in production.
 
-**Without a key the route returns 503** and the form tells the visitor to email
-directly — it never pretends a message was delivered. To move to Resend,
-Postmark or SES later, replace `deliver()` in
-[`src/app/api/contact/route.ts`](src/app/api/contact/route.ts); nothing else
-changes. The in-memory limiter is per-instance — put a shared store behind it if
-you deploy more than one.
+**Why client-side, and why the key is public.** Web3Forms rejects server-side
+calls on the free plan (403, *"Use our API in client side"*), so there is no API
+route — the key ships in the client bundle, which is how Web3Forms is designed
+to be used. It authorises delivery to one inbox and nothing else. If it ever
+attracts spam, rotate it in their dashboard and enable their captcha.
+
+Validation, the honeypot and the focus-management on errors all still run in
+[`ContactForm.tsx`](src/components/sections/ContactForm.tsx). **Without a key the
+form tells the visitor to email directly** — it never pretends a message was
+delivered. To move to a server-side provider later (Resend, Postmark, SES), add
+a route back and post to it instead; everything above the `fetch` call stays as
+it is.
+
+With no API route, the whole site is static — there is no serverless function to
+cold-start, and every page is served straight from the CDN.
 
 ---
 
@@ -122,7 +129,6 @@ src/
 │  ├─ page.tsx            composes the eight home sections
 │  ├─ template.tsx        page transition (opacity only — see the note inside)
 │  ├─ work/[slug]/        case studies, statically generated
-│  ├─ api/contact/        form endpoint
 │  ├─ icon.tsx            favicon, generated
 │  ├─ opengraph-image.tsx social card, generated
 │  ├─ sitemap.ts robots.ts not-found.tsx

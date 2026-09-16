@@ -5,7 +5,16 @@ import { useEffect, useRef, useState, type FormEvent } from "react";
 import { flushSync } from "react-dom";
 import { SelectField, TextArea, TextField } from "@/components/ui/Field";
 import { Arrow, Magnetic } from "@/components/ui/Actions";
-import { contactScopes, profile } from "@/data/profile";
+import { contactScopes, profile, scopeLabel } from "@/data/profile";
+
+/**
+ * Web3Forms access key. NEXT_PUBLIC_ because the submission happens in the
+ * browser — the free plan refuses server-side calls. The key is public by
+ * design in their model (their own docs put it in page HTML); it authorises
+ * delivery to one inbox and nothing else. If it ever attracts spam, rotate it
+ * in the Web3Forms dashboard and turn on their captcha.
+ */
+const ACCESS_KEY = process.env.NEXT_PUBLIC_WEB3FORMS_ACCESS_KEY;
 import { EASE_SIGNAL } from "@/lib/motion";
 
 type Status = "idle" | "submitting" | "success" | "error";
@@ -85,26 +94,63 @@ export function ContactForm() {
     setStatus("submitting");
     setServerMessage("");
 
+    // Honeypot: a real person never fills this, so a value means a bot.
+    // Accept silently rather than erroring, so the bot learns nothing.
+    const form = new FormData(event.currentTarget);
+    if (String(form.get("website") ?? "")) {
+      setStatus("success");
+      return;
+    }
+
+    if (!ACCESS_KEY) {
+      setStatus("error");
+      setServerMessage(
+        "The form is not connected to an inbox yet, so this did not send. Email me directly:",
+      );
+      return;
+    }
+
+    setStatus("submitting");
+    setServerMessage("");
+
     try {
-      const form = new FormData(event.currentTarget);
-      const response = await fetch("/api/contact", {
+      // Posted from the browser, not from our server: Web3Forms rejects
+      // server-side calls on the free plan with a 403 ("Use our API in client
+      // side"). That is why this submits directly rather than through a route.
+      const response = await fetch("https://api.web3forms.com/submit", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...values, website: form.get("website") ?? "" }),
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          access_key: ACCESS_KEY,
+          subject: `Portfolio enquiry — ${values.name}${values.company ? ` (${values.company})` : ""}`,
+          from_name: `${profile.fullName} portfolio`,
+          // So Reply in your mail client answers the sender, not the form.
+          replyto: values.email,
+          name: values.name,
+          email: values.email,
+          company: values.company || "—",
+          "What they need": scopeLabel(values.scope),
+          message: values.message,
+          botcheck: "",
+        }),
       });
 
-      const data = (await response.json()) as { message?: string };
+      // Web3Forms can answer 200 with {success:false}, so check the body too.
+      const data = (await response.json().catch(() => null)) as {
+        success?: boolean;
+        message?: string;
+      } | null;
 
-      if (!response.ok) {
+      if (!response.ok || data?.success !== true) {
         setStatus("error");
-        setServerMessage(data.message ?? "That did not send. Email me directly instead.");
+        setServerMessage(data?.message ?? "That did not go through. Email me directly:");
         return;
       }
 
       setStatus("success");
     } catch {
       setStatus("error");
-      setServerMessage("Network trouble. Email me directly and it will reach me.");
+      setServerMessage("Network trouble. Email me directly and it will reach me:");
     }
   };
 
